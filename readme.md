@@ -36,7 +36,7 @@ How do you do this? You need to maintain a history of a user’s Views and Purch
 
 ####User Profile
 |User|Purchases|
-----------------
+|----|---------|
 |John Smith|Black Shoes\:Screw Driver Set\:Dog Collar\:Dog Food\:Bark Buster\:Bose Headset|
 |Jane Doe|Lip Stick\:Dog Collar\:Bark Buster|
 |Albert Citizen|Climbing Rope\:Sleeping Bag\:Hiking Tent|
@@ -45,7 +45,7 @@ You also maintain a list of who purchased a product e.g.
 
 ####Product Profile
 |Product|Users who purchased|
------------------------------
+|-------|-------------------|
 |Black Shoes|John Smith|
 |Screw Driver Set|John Smith|
 |Dog Collar|John Smith\:Jane Doe|
