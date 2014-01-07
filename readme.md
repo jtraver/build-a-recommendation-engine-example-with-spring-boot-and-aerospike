@@ -37,9 +37,9 @@ How do you do this? You need to maintain a history of a user’s Views and Purch
 ####User Profile
 |User|Purchases|
 ================
-|John Smith|Black Shoes:Screw Driver Set:Dog Collar:Dog Food:Bark Buster:Bose Headset|
-|Jane Doe|Lip Stick:Dog Collar:Bark Buster|
-|Albert Citizen|Climbing Rope:Sleeping Bag:Hiking Tent|
+|John Smith|Black Shoes\:Screw Driver Set\:Dog Collar\:Dog Food\:Bark Buster\:Bose Headset|
+|Jane Doe|Lip Stick\:Dog Collar\:Bark Buster|
+|Albert Citizen|Climbing Rope\:Sleeping Bag\:Hiking Tent|
 
 You also maintain a list of who purchased a product e.g.
 
@@ -48,9 +48,9 @@ You also maintain a list of who purchased a product e.g.
 =============================
 |Black Shoes|John Smith|
 |Screw Driver Set|John Smith|
-|Dog Collar|John Smith:Jane Doe|
+|Dog Collar|John Smith\:Jane Doe|
 |Dog Food|John Smith|
-|Bark Buster|John Smith:Jane Doe|
+|Bark Buster|John Smith\:Jane Doe|
 |Lip Stick|Jane Doe|
 |Climbing Rope|Albert Citizen|
 |Sleeping Bag|Albert Citizen|
@@ -68,6 +68,6 @@ Similarity can be found using a bunch of algorithms that BB will elaborate here.
 2.	Retrieve Jane’s User Profile
 3.	Retrieve the Product ‘s Profile for each of Jane’s purchases, this can be a batch operation in Aerospike that retrieves a list of records in one lump
 4.	For each product
-a.	Retrieve the user profile
-b.	See if this profile is similar to Jane’s by giving it a score
+	a.	Retrieve the user profile
+	b.	See if this profile is similar to Jane’s by giving it a score
 5.	Using the user profile with the highest similarity score, recommend the products in this user profile to Jane.
