@@ -37,31 +37,36 @@ How do you do this? You need to maintain a history of a user’s Views and Purch
 ####User Profile
 |User|Purchases|
 |----|---------|
-|John Smith|Black Shoes\:Screw Driver Set\:Dog Collar\:Dog Food\:Bark Buster\:Bose Headset|
-|Jane Doe|Lip Stick\:Dog Collar\:Bark Buster|
-|Albert Citizen|Climbing Rope\:Sleeping Bag\:Hiking Tent|
+|peter|shoes\:cat\:dog food\:bark buster\:dog collar\:helicopter\:arduino|
+|jane|shoes\:dog food\:dog collar\:sheep\:lipstick:pasta|
+|alex|beer\:wine\:wiskey\:tequila|
 
 You also maintain a list of who purchased a product e.g.
 
 ####Product Profile
 |Product|Users who purchased|
 |-------|-------------------|
-|Black Shoes|John Smith|
-|Screw Driver Set|John Smith|
-|Dog Collar|John Smith\:Jane Doe|
-|Dog Food|John Smith|
-|Bark Buster|John Smith\:Jane Doe|
-|Lip Stick|Jane Doe|
-|Climbing Rope|Albert Citizen|
-|Sleeping Bag|Albert Citizen|
-|Hiking Tent|Albert Citizen|
+|shoes|peter:jane|
+|cat|peter|
+|dog food|peter:jane|
+|bark buster|peter|
+|dog collar|peter:jane|
+|helicopter|peter|
+|arduino|peter|
+|sheep|jane|
+|lipstick|jane|
+|pasta|jane|
+|beer|alex|
+|wine|alex|
+|wiskey|alex|
+|tequilla|alex|
 
 From this data, you can see that Jane Doe and John Smith have similar purchase histories, but Albert Citizen does not. 
 
 If Jane Doe uses your application, you could recommend to her the same things that John Smith purchased, minus the products that are common to both John and Jane. You may also prioritize which products to recommend based on a category (a similarity weight) i.e. the “dog” related products may have more relevance to Jane than the Bose Headset.
 
 ###How do you find similarity?
-Similarity can be found using a bunch of algorithms that BB will elaborate here.
+Similarity can be found using several algorithms, e.g. Cosine Similarity. In this example, you will use a very simple algorithm using a simple score.
 
 ###Scenario
 1.	Jane Doe accesses the application

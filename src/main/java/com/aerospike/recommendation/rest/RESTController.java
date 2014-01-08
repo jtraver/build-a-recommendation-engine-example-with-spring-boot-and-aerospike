@@ -52,15 +52,15 @@ public class RESTController {
 	@SuppressWarnings("unchecked")
 	@RequestMapping(value="/recommendation/{user}", method=RequestMethod.GET)
 	public @ResponseBody JSONArray getRecommendationFor(@PathVariable("user") String user) throws Exception {
-
+		log.debug("Finding recomendations for " + user);
 		Policy policy = new Policy();
 
 		// Get the user's purchase history as a list of strings
 		Key key = new Key(nameSpace, USERS_SET, Value.get(user));
-		Record userProfile = client.get(policy, key, USER_HISTORY);
-		List<String> receivedList = (List<String>)userProfile.getValue(USER_HISTORY);
+		Record thisUser = client.get(policy, key, USER_HISTORY);
+		List<String> thisUserProducts = (List<String>)thisUser.getValue(USER_HISTORY);
 		Set<String> sourcePurchaseList = new HashSet<String>() ;
-		sourcePurchaseList.addAll(receivedList);
+		sourcePurchaseList.addAll(thisUserProducts);
 
 
 		// For each product listed retrieve the product profile
@@ -76,7 +76,10 @@ public class RESTController {
 
 		// For each product profile retrieve the user
 		// profile, excluding the target user
+
 		Record bestMatchedUser = null;
+		int bestScore = 0;
+
 		Set<Key> possibleMatches = new HashSet<Key>();
 		for (Record product : productProfiles){
 			List<String> userList = (List<String>) product.getValue(PRODUCT_HISTORY);
@@ -85,12 +88,16 @@ public class RESTController {
 					possibleMatches.add(new Key(nameSpace, USERS_SET, Value.get(productUser)));
 			}
 		}
-		;
+
 		Record[] similarUsers = client.get(policy, possibleMatches.toArray(new Key[0]), USER_HISTORY);
 		// find user with the highest similarity
 		for (Record similarUser : similarUsers){
-			//TODO  Insert "similarity black magic" here
-			bestMatchedUser = similarUser;
+			List<String> similarUserProduct = (List<String>)similarUser.getValue(USER_HISTORY);
+			int score = easySimilarity(thisUserProducts, similarUserProduct);
+			if (score > bestScore){
+				bestScore = score;
+				bestMatchedUser = similarUser;
+			}
 		}
 		// return the best matched user's purchases as the recommendation
 		JSONArray recommendations = new JSONArray();
@@ -102,6 +109,7 @@ public class RESTController {
 		for (String product : bestMatchedPurchases){
 			recommendations.add(product);
 		}
+		log.debug("Found these recomendations: " + recommendations);
 		return recommendations;
 	}
 
@@ -122,7 +130,7 @@ public class RESTController {
 	@RequestMapping(value="/profileUpload/{what}", method=RequestMethod.POST)
 	public @ResponseBody String handleFileUpload(@PathVariable("what") String what, @RequestParam("name") String name, 
 			@RequestParam("file") MultipartFile file){
-
+		
 		if (!file.isEmpty() && (what.equalsIgnoreCase("USER") || what.equalsIgnoreCase("PRODUCT"))) {
 			try {
 				WritePolicy wp = new WritePolicy();
@@ -142,16 +150,13 @@ public class RESTController {
 						historyList.add(entry);
 					}
 
-					/*
-					 * write the record to Aerospike
-					 * NOTE: Bin names must not exceed 14 characters
-					 */
+					// write the record to Aerospike
 					Key key = new Key(nameSpace, setName, values[0].trim() );
 					Bin bin = new Bin(binName, Value.get(historyList));
 					client.put(wp, key, bin);
 
-					log.info(setName + " [ID= " + values[0].trim() 
-							+ " , history=" + values[1].trim()); 
+					log.info(setName + " [ID=" + values[0].trim() 
+							+ " , history=" + values[1].trim() + "]"); 
 
 				}
 				br.close();
@@ -166,5 +171,44 @@ public class RESTController {
 			return "You failed to upload " + name + " because the file was empty.";
 		}
 	}
+	/**
+	 * This is a very rudimentary similarity algorithm
+	 * @param sourceVector
+	 * @param targetVector
+	 * @return
+	 */
+	private int easySimilarity(List<String> sourceVector, List<String> targetVector){
+		int incommon = 0;
+
+		for (String sourceProd : sourceVector){
+			if (targetVector.contains(sourceProd)){
+				incommon++;
+			}
+		}
+		return incommon;
+	}
+
+//	private double cosineSimilarity(List<Integer> vec1, List<Integer> vec2) { 
+//		double dp = dotProduct(vec1, vec2); 
+//		double magnitudeA = magnitude(vec1); 
+//		double magnitudeB = magnitude(vec2); 
+//		return dp / magnitudeA * magnitudeB; 
+//	} 
+//
+//	private double magnitude(List<Integer> vec) { 
+//		double sum_mag = 0; 
+//		for(Integer value : vec) { 
+//			sum_mag += value * value; 
+//		} 
+//		return Math.sqrt(sum_mag); 
+//	} 
+//
+//	private double dotProduct(List<Integer> vec1, List<Integer> vec2) { 
+//		double sum = 0; 
+//		for(int i = 0; i<vec1.size(); i++) { 
+//			sum += vec1.get(i) * vec2.get(i); 
+//		} 
+//		return sum; 
+//	} 
 
 }
