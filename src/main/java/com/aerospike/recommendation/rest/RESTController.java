@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -27,13 +28,14 @@ import com.aerospike.client.Record;
 import com.aerospike.client.Value;
 import com.aerospike.client.policy.Policy;
 import com.aerospike.client.policy.WritePolicy;
+import com.aerospike.recommendation.model.MovieRating;
 
 @Controller
 public class RESTController {
-	private static final String PRODUCT_SET = "PRODUCT";
-	private static final String PRODUCT_HISTORY = "history";
-	private static final String USERS_SET = "USER";
-	private static final String USER_HISTORY = "history";
+	public static final String PRODUCT_SET = "MOVIE_TITLES";
+	public static final String PRODUCT_HISTORY = "WATCHED_BY";
+	public static final String USERS_SET = "MOVIE_CUSTOMERS";
+	public static final String USER_HISTORY = "MOVIES_WATCHED";
 	private static Logger log = Logger.getLogger(RESTController.class); 
 	@Autowired
 	AerospikeClient client;
@@ -55,24 +57,27 @@ public class RESTController {
 		log.debug("Finding recomendations for " + user);
 		Policy policy = new Policy();
 
-		// Get the user's purchase history as a list of strings
+		// Get the user's purchase history as a list of ratings
 		Key key = new Key(nameSpace, USERS_SET, Value.get(user));
 		Record thisUser = client.get(policy, key, USER_HISTORY);
-		List<String> thisUserProducts = (List<String>)thisUser.getValue(USER_HISTORY);
-		Set<String> sourcePurchaseList = new HashSet<String>() ;
-		sourcePurchaseList.addAll(thisUserProducts);
-
+		if (thisUser == null){
+			log.debug("Could not find user: " + user );
+			throw new UserNotFound(user);
+		}
+		List<Map<String, Object>> thisUserProducts = (List<Map<String, Object>>)thisUser.getValue(USER_HISTORY);
 
 		// For each product listed retrieve the product profile
 		// Do this in a BATCH operation that retrieves multiple
 		// records in 1 operation.
-		Key[] productKeys = new Key[sourcePurchaseList.size()];
+		Key[] productKeys = new Key[thisUserProducts.size()];
 		int index = 0;
-		for (String product : sourcePurchaseList){
-			productKeys[index] = new Key(nameSpace, PRODUCT_SET, product); 
+		for (Map<String, Object> rating : thisUserProducts){
+			productKeys[index] = new Key(nameSpace, PRODUCT_SET, (String)rating.get(MovieRating.MOVIE_ID)); 
 			index++;
 		}
-		Record[] productProfiles = client.get(policy, productKeys, USER_HISTORY);
+		
+		// Get all the products' histories
+		Record[] productProfiles = client.get(policy, productKeys, PRODUCT_HISTORY);
 
 		// For each product profile retrieve the user
 		// profile, excluding the target user
@@ -82,17 +87,19 @@ public class RESTController {
 
 		Set<Key> possibleMatches = new HashSet<Key>();
 		for (Record product : productProfiles){
-			List<String> userList = (List<String>) product.getValue(PRODUCT_HISTORY);
-			for (String productUser : userList){
-				if (!productUser.equals(user)) //exclude target user
-					possibleMatches.add(new Key(nameSpace, USERS_SET, Value.get(productUser)));
+			List<Map<String, Object>> userRatingList = (List<Map<String, Object>>) product.getValue(PRODUCT_HISTORY);
+			if (!(userRatingList == null)){
+				for (Map<String, Object> userRating : userRatingList){
+					if (!userRating.get(MovieRating.CUSTOMER_ID).equals(user)) //exclude target user
+						possibleMatches.add(new Key(nameSpace, USERS_SET, Value.get(userRating.get(MovieRating.CUSTOMER_ID))));
+				}
 			}
 		}
 
 		Record[] similarUsers = client.get(policy, possibleMatches.toArray(new Key[0]), USER_HISTORY);
 		// find user with the highest similarity
 		for (Record similarUser : similarUsers){
-			List<String> similarUserProduct = (List<String>)similarUser.getValue(USER_HISTORY);
+			List<Map<String, Object>> similarUserProduct = (List<Map<String, Object>>)similarUser.getValue(USER_HISTORY);
 			int score = easySimilarity(thisUserProducts, similarUserProduct);
 			if (score > bestScore){
 				bestScore = score;
@@ -101,15 +108,21 @@ public class RESTController {
 		}
 		// return the best matched user's purchases as the recommendation
 		JSONArray recommendations = new JSONArray();
-		Set<String> bestMatchedPurchases = new HashSet<String>() ;
-		bestMatchedPurchases.addAll( (Collection<? extends String>) bestMatchedUser.getValue(USER_HISTORY));
+		Set<MovieRating> bestMatchedPurchases = new HashSet<MovieRating>() ;
+		bestMatchedPurchases.addAll( (Collection<? extends MovieRating>) bestMatchedUser.getValue(USER_HISTORY));
 		//Remove common products
-		bestMatchedPurchases.removeAll(sourcePurchaseList);
+		bestMatchedPurchases.removeAll(thisUserProducts);
 
-		for (String product : bestMatchedPurchases){
-			recommendations.add(product);
+		productKeys = new Key[bestMatchedPurchases.size()];
+		index = 0;
+		for (MovieRating product : bestMatchedPurchases){
+			productKeys[index] = new Key("test", PRODUCT_SET, product.getMovie());
 		}
+		Record[] recommendedMovies = client.get(policy, productKeys, "Title", "YearOfRelease");
 		log.debug("Found these recomendations: " + recommendations);
+		for (Record rec: recommendedMovies){
+			recommendations.add(new JSONRecord(rec));
+		}
 		return recommendations;
 	}
 
@@ -173,15 +186,15 @@ public class RESTController {
 	}
 	/**
 	 * This is a very rudimentary similarity algorithm
-	 * @param sourceVector
-	 * @param targetVector
+	 * @param thisUserProducts
+	 * @param similarUserProduct
 	 * @return
 	 */
-	private int easySimilarity(List<String> sourceVector, List<String> targetVector){
+	private int easySimilarity(List<Map<String, Object>> thisUserProducts, List<Map<String, Object>> similarUserProduct){
 		int incommon = 0;
 
-		for (String sourceProd : sourceVector){
-			if (targetVector.contains(sourceProd)){
+		for (Map<String, Object> sourceRating : thisUserProducts){
+			if (similarUserProduct.contains(sourceRating.get(MovieRating.MOVIE_ID))){
 				incommon++;
 			}
 		}

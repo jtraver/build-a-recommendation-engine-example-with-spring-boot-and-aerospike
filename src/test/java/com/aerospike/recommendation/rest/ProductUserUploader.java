@@ -17,7 +17,7 @@ public class ProductUserUploader {
 	}
 
 	@Test
-	public void upload() {
+	public void uploadProductsUsers() {
         RestTemplate template = new RestTemplate();
         MultiValueMap<String, Object> parts = new LinkedMultiValueMap<String, Object>();
         parts.add("name", USER_FILE);
