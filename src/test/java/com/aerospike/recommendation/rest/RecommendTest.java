@@ -24,7 +24,7 @@ public class RecommendTest {
 	public void test() throws Exception{
 		// set properties
 		Properties as = System.getProperties();
-		as.put("seedHost", "192.168.51.192");
+		as.put("seedHost", "192.168.51.200");
 		as.put("port", "3000");
 		as.put("namespace", "test");
 		// start app

@@ -20,10 +20,11 @@ import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
-import com.aerospike.client.Value;
 import com.aerospike.client.policy.Policy;
 import com.aerospike.client.policy.WritePolicy;
-import com.aerospike.recommendation.model.MovieRating;
+import com.aerospike.recommendation.model.Customer;
+import com.aerospike.recommendation.model.Movie;
+import com.aerospike.recommendation.model.WatchedRated;
 
 public class NetFlicksUploader {
 	public static final String MOVIE_TITLES = "src/test/resources/net-flicks/movie_titles.txt";
@@ -53,16 +54,15 @@ public class NetFlicksUploader {
 
 			@Override
 			public void storeRecord(String[] fields) throws AerospikeException {
-				Key key = new Key("test", RESTController.PRODUCT_SET, fields[0]);
+				Movie movie = new Movie(fields[0], 
+						fields[1], 
+						fields[2]);
+				Key key = new Key(RESTController.NAME_SPACE, RESTController.PRODUCT_SET, fields[0]);
 				// write the record to Aerospike
-				client.put(writePolicy, key,
-						new Bin("YearOfRelease", Value.get(fields[1])),
-						new Bin("Title", Value.get(fields[2]))
-						);
+				client.put(writePolicy, movie.getKey("test", RESTController.PRODUCT_SET),
+						movie.asBins());
 
-
-				System.out.println("MOVIE_TITLE [ID=" + fields[0] 
-						+ ", title=" + fields[2]); 
+				System.out.println(movie); 
 
 			}
 
@@ -109,90 +109,99 @@ public class NetFlicksUploader {
 		Policy policy = new Policy();
 		policy.timeout = 0;
 
-		Key movieKey = null;
-		Record movie = null;
+		Movie movie = null;
 		String movieID = null;
 		int rating = 0;
-		List<Map<String, Object>> watchedBy = null;
-		boolean movieToUpdate = false;
+		List<WatchedRated> watchedBy = null;
 		
 		BufferedReader br = new BufferedReader(new FileReader(file));
 		while ((line = br.readLine()) != null) {
+			Customer customer = null;
 			String customerID = null;
 			String date = null;
-			Key customerKey = null;
 			Record customerRecord = null;
 
-			if (line.endsWith(":")){
-				// update the last movie with the new rating
-				if (movieToUpdate){
-					for (Map<String, Object> mr : watchedBy){
-						rating += (Integer) mr.get(MovieRating.RATING);
-					}
-					rating /= watchedBy.size();
-					saveMovieRecord(movieID, watchedBy, rating);
+			if (line.endsWith(":")){ // we are going to process a movie
+				// update the last movie 
+				if (movie != null){
+					movie.setWatchedBy(watchedBy);
+					saveMovieRecord(movie);
 				}
 				// get the next movie ID
 				movieID = line.substring(0, line.length()-1);
-				movieKey = new Key("test", RESTController.PRODUCT_SET, movieID);
+				movie = new Movie(movieID);
 				// fetch the movie record
-				movie = client.get(policy, movieKey, RESTController.PRODUCT_HISTORY);
-				if (movie != null){
-					watchedBy = (List<Map<String, Object>>) movie.bins.get(RESTController.PRODUCT_HISTORY);
-					if (watchedBy == null)
-						watchedBy = new ArrayList<Map<String, Object>>();
+				Record movieRecord = client.get(policy, movie.getKey(RESTController.NAME_SPACE, 
+						RESTController.PRODUCT_SET));
+				
+				if (movieRecord != null){
+					/*
+					 * if we find a movie record in Aerospike
+					 * get its watched by list
+					 */
+					movie.fromRecord(movieRecord);
+					if (movie.getWatchedBy() == null)
+						movie.setWatchedBy(new ArrayList<WatchedRated>());
+					watchedBy = movie.getWatchedBy();
+					
 				} else {
-					watchedBy = new ArrayList<Map<String, Object>>();
+					/*
+					 * if we dont, null out the movie reference
+					 */
+					movie = null;
 				}
-				movieToUpdate = true;
 			} else {
 				String[] values = line.split(",");
 				customerID = values[0];
 				rating = Integer.parseInt(values[1]);
 				date = values[2];
 
-				Map<String, Object> newRating = new HashMap<String, Object>();
-				newRating.put(MovieRating.MOVIE_ID, movieID);
-				newRating.put(MovieRating.CUSTOMER_ID, customerID);
-				newRating.put(MovieRating.RATING, rating);
-				newRating.put(MovieRating.DATE, date);
+				WatchedRated newRating = new WatchedRated(movieID,customerID, rating, date);
 
 				watchedBy.add(newRating);
 
-				customerKey = new Key("test", RESTController.USERS_SET, customerID);
+				customer = new Customer(customerID);
 
 				// get the movies watched
-				List<Map<String, Object>> watched = null;
-				customerRecord = client.get(policy, customerKey, RESTController.USER_HISTORY);
+				List<WatchedRated> watched = null;
+				customerRecord = client.get(policy, customer.getKey(RESTController.NAME_SPACE, RESTController.USERS_SET));
 				if (customerRecord != null) {
-					watched = (List<Map<String, Object>>) customerRecord.getValue(RESTController.USER_HISTORY);
-					if (watched == null)
-						watched = new ArrayList<Map<String, Object>>();
-				} else {
-					watched = new ArrayList<Map<String, Object>>();
+					customer.fromRecord(customerRecord);
 				}
+				
+				if (customer.getWatched() == null)
+					customer.setWatched(new ArrayList<WatchedRated>());
+				watched = customer.getWatched();
+
 				watched.add(newRating);
 
 				// update customer
 				WritePolicy wp = new WritePolicy();
-				client.put(wp, customerKey, Bin.asList(RESTController.USER_HISTORY, watched));
+				client.put(wp, 
+						customer.getKey(RESTController.NAME_SPACE, RESTController.USERS_SET), 
+						customer.asBins());
+				customer = null;
 			}
 
 
 
 		}
 		br.close();
-		if (movieToUpdate){
-			saveMovieRecord(movieID, watchedBy, rating);
+		if (movie != null){
+			saveMovieRecord(movie);
+			movie = null;
 		}
 		System.out.println("Successfully processed " + file.getName());
 
 	}
 	
-	private void saveMovieRecord(String movieID, List<Map<String, Object>> watchedBy, int rating) throws AerospikeException {
+	private void saveMovieRecord(Movie movie) throws AerospikeException {
 		WritePolicy wp = new WritePolicy();
-		Key movieKey = new Key("test", RESTController.PRODUCT_SET, movieID);
-		client.put(wp, movieKey, Bin.asList(RESTController.PRODUCT_HISTORY, watchedBy), new Bin("RATING", rating));
+		// sort the WatchedRated records by date
+		movie.sortWatched();
+		client.put(wp, 
+				movie.getKey(RESTController.NAME_SPACE, RESTController.PRODUCT_SET), 
+				movie.asBins());
 	}
 	
 	private void processFile(File file, ILineProcessor processor) throws IOException, AerospikeException {

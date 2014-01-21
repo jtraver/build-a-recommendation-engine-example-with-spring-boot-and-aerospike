@@ -1,9 +1,6 @@
 package com.aerospike.recommendation.rest;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,25 +14,31 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.aerospike.client.AerospikeClient;
-import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
-import com.aerospike.client.Value;
 import com.aerospike.client.policy.Policy;
-import com.aerospike.client.policy.WritePolicy;
-import com.aerospike.recommendation.model.MovieRating;
+import com.aerospike.recommendation.model.Customer;
+import com.aerospike.recommendation.model.Movie;
+import com.aerospike.recommendation.model.WatchedRated;
 
 @Controller
 public class RESTController {
+	private static final int MOVIE_REVIEW_LIMIT = 20;
+	public static final String NAME_SPACE = "test";
 	public static final String PRODUCT_SET = "MOVIE_TITLES";
-	public static final String PRODUCT_HISTORY = "WATCHED_BY";
 	public static final String USERS_SET = "MOVIE_CUSTOMERS";
-	public static final String USER_HISTORY = "MOVIES_WATCHED";
+
+	public static final String DATE = "date";
+	public static final String RATING = "rating";
+	public static final String CUSTOMER_ID = "customer-id";
+	public static final String MOVIE_ID = "movie-id";
+	public static final String WATCHED_BY = "watchedBy";
+	public static final String TITLE = "title";
+	public static final String YEAR_OF_RELEASE = "yearOfRelease";
+	public static final String CUSTOMER_WATCHED = "watched";
 	private static Logger log = Logger.getLogger(RESTController.class); 
 	@Autowired
 	AerospikeClient client;
@@ -52,176 +55,170 @@ public class RESTController {
 	 * @throws Exception
 	 */
 	@SuppressWarnings("unchecked")
-	@RequestMapping(value="/recommendation/{user}", method=RequestMethod.GET)
-	public @ResponseBody JSONArray getRecommendationFor(@PathVariable("user") String user) throws Exception {
-		log.debug("Finding recomendations for " + user);
+	@RequestMapping(value="/recommendation/{customer}", method=RequestMethod.GET)
+	public @ResponseBody JSONArray getRecommendationFor(@PathVariable("customer") String customerID) throws Exception {
+		log.debug("Finding recomendations for " + customerID);
 		Policy policy = new Policy();
 
-		// Get the user's purchase history as a list of ratings
-		Key key = new Key(nameSpace, USERS_SET, Value.get(user));
-		Record thisUser = client.get(policy, key, USER_HISTORY);
+		/* 
+		 * Get the customer's purchase history as a list of ratings
+		 */
+		Record thisUser = client.get(policy, new Key(NAME_SPACE, USERS_SET, customerID));
 		if (thisUser == null){
-			log.debug("Could not find user: " + user );
-			throw new UserNotFound(user);
+			log.debug("Could not find user: " + customerID );
+			throw new CustomerNotFound(customerID);
 		}
-		List<Map<String, Object>> thisUserProducts = (List<Map<String, Object>>)thisUser.getValue(USER_HISTORY);
+		/*
+		 * get the movies watched and rated
+		 */
+		List<Map<String, Object>> customerWatched = (List<Map<String, Object>>) thisUser.getValue(CUSTOMER_WATCHED);
+		if (customerWatched == null || customerWatched.size()==0){
+			// customer Hasen't Watched anything
+			log.debug("No movies found for customer: " + customerID );
+			throw new NoMoviesFound(customerID);
+		}
 
-		// For each product listed retrieve the product profile
-		// Do this in a BATCH operation that retrieves multiple
-		// records in 1 operation.
-		Key[] productKeys = new Key[thisUserProducts.size()];
+		/*
+		 * build a vector list of movies watched
+		 */
+		List<Integer> thisCustomerMovieVector = makeVector(customerWatched);
+
+
+		Record bestMatchedCustomer = null;
+		double bestScore = 0;
+		/*
+		 * for each movie this customer watched, iterate
+		 * through the other customers that also watched
+		 * the movie 
+		 */
+		for (Map<String, Object> wr : customerWatched){
+			Key movieKey = new Key(NAME_SPACE, PRODUCT_SET, (String) wr.get(MOVIE_ID) );
+			Record movieRecord = client.get(policy, movieKey);
+
+			List<Map<String, Object>> whoWatched = (List<Map<String, Object>>) movieRecord.getValue(WATCHED_BY);
+
+			if (!(whoWatched == null)){
+				int end = Math.min(MOVIE_REVIEW_LIMIT, whoWatched.size()); 
+				/* 
+				 * Some movies are watched by >100k customers, only look at the last n movies, or the 
+				 * number of customers, whichever is smaller
+				 */
+				for (int index = 0; index < end; index++){
+					Map<String, Object> watchedBy = whoWatched.get(index);
+					String similarCustomerId = (String) watchedBy.get(CUSTOMER_ID);
+					if (!similarCustomerId.equals(customerID)) {
+						// find user with the highest similarity
+
+						Record similarCustomer = client.get(policy, new Key(NAME_SPACE, USERS_SET, similarCustomerId));
+
+						List<Map<String, Object>> similarCustomerWatched = (List<Map<String, Object>>) similarCustomer.getValue(CUSTOMER_WATCHED);
+						double score = easySimilarity(thisCustomerMovieVector, similarCustomerWatched);
+						if (score > bestScore){
+							bestScore = score;
+							bestMatchedCustomer = similarCustomer;
+						}
+					}
+				}
+			}
+		}
+		log.debug("Best customer: " + bestMatchedCustomer);
+		log.debug("Best score: " + bestScore);
+		// return the best matched user's purchases as the recommendation
+		List<Integer> bestMatchedPurchases = new ArrayList<Integer>();
+		for (Map<String, Object> watched : (List<Map<String, Object>>)bestMatchedCustomer.getValue(CUSTOMER_WATCHED)){
+			Integer movieID = Integer.parseInt((String) watched.get(MOVIE_ID));
+			if ((!thisCustomerMovieVector.contains(movieID))&&(movieID != null)){
+				bestMatchedPurchases.add(movieID);
+			}
+		}
+
+		// get the movies
+		Key[] recomendedMovieKeys = new Key[bestMatchedPurchases.size()];
 		int index = 0;
-		for (Map<String, Object> rating : thisUserProducts){
-			productKeys[index] = new Key(nameSpace, PRODUCT_SET, (String)rating.get(MovieRating.MOVIE_ID)); 
+		for (int recomendedMovieID : bestMatchedPurchases){
+			recomendedMovieKeys[index] = new Key(NAME_SPACE, PRODUCT_SET, String.valueOf(recomendedMovieID));
+			log.debug("Added Movie key: " + recomendedMovieKeys[index]);
 			index++;
 		}
-		
-		// Get all the products' histories
-		Record[] productProfiles = client.get(policy, productKeys, PRODUCT_HISTORY);
-
-		// For each product profile retrieve the user
-		// profile, excluding the target user
-
-		Record bestMatchedUser = null;
-		int bestScore = 0;
-
-		Set<Key> possibleMatches = new HashSet<Key>();
-		for (Record product : productProfiles){
-			List<Map<String, Object>> userRatingList = (List<Map<String, Object>>) product.getValue(PRODUCT_HISTORY);
-			if (!(userRatingList == null)){
-				for (Map<String, Object> userRating : userRatingList){
-					if (!userRating.get(MovieRating.CUSTOMER_ID).equals(user)) //exclude target user
-						possibleMatches.add(new Key(nameSpace, USERS_SET, Value.get(userRating.get(MovieRating.CUSTOMER_ID))));
-				}
+		Record[] recommendedMovies = client.get(policy, recomendedMovieKeys, "title", "yearOfRelease");
+		if (log.isDebugEnabled()){
+			log.debug("Recomended Movies:");
+			for (Record rec : recommendedMovies){
+				log.debug(rec);
 			}
 		}
-
-		Record[] similarUsers = client.get(policy, possibleMatches.toArray(new Key[0]), USER_HISTORY);
-		// find user with the highest similarity
-		for (Record similarUser : similarUsers){
-			List<Map<String, Object>> similarUserProduct = (List<Map<String, Object>>)similarUser.getValue(USER_HISTORY);
-			int score = easySimilarity(thisUserProducts, similarUserProduct);
-			if (score > bestScore){
-				bestScore = score;
-				bestMatchedUser = similarUser;
-			}
-		}
-		// return the best matched user's purchases as the recommendation
 		JSONArray recommendations = new JSONArray();
-		Set<MovieRating> bestMatchedPurchases = new HashSet<MovieRating>() ;
-		bestMatchedPurchases.addAll( (Collection<? extends MovieRating>) bestMatchedUser.getValue(USER_HISTORY));
-		//Remove common products
-		bestMatchedPurchases.removeAll(thisUserProducts);
-
-		productKeys = new Key[bestMatchedPurchases.size()];
-		index = 0;
-		for (MovieRating product : bestMatchedPurchases){
-			productKeys[index] = new Key("test", PRODUCT_SET, product.getMovie());
-		}
-		Record[] recommendedMovies = client.get(policy, productKeys, "Title", "YearOfRelease");
-		log.debug("Found these recomendations: " + recommendations);
 		for (Record rec: recommendedMovies){
-			recommendations.add(new JSONRecord(rec));
+			if (rec != null)
+				recommendations.add(new JSONRecord(rec));
 		}
+		log.debug("Found these recomendations: " + recommendations);
 		return recommendations;
 	}
-
-	/*
-	 * profile file upload
-	 */
-	@RequestMapping(value="/profileUpload", method=RequestMethod.GET)
-	public @ResponseBody String provideUploadInfo() {
-		return "You can upload a file by posting to this same URL.";
-	}
 	/**
-	 * Upload a CSV file containing either user profiles OR product profiles
-	 * @param what USER for user profile, PRODUCT for product profile
-	 * @param name
-	 * @param file
+	 * Produces a Integer vector from the movie IDs
+	 * @param ratingList
 	 * @return
 	 */
-	@RequestMapping(value="/profileUpload/{what}", method=RequestMethod.POST)
-	public @ResponseBody String handleFileUpload(@PathVariable("what") String what, @RequestParam("name") String name, 
-			@RequestParam("file") MultipartFile file){
+	private List<Integer> makeVector(List<Map<String, Object>> ratingList){
+		List<Integer> movieVector = new ArrayList<Integer>();
+		for (Map<String, Object> one : ratingList){
+			movieVector.add(Integer.parseInt((String)one.get(MOVIE_ID)));
+		}
+		return movieVector;
+	}
+	/**
+	 * This is a very rudimentary algorithm using Cosine similarity
+	 * @param customerWatched
+	 * @param similarCustomerWatched
+	 * @return
+	 */
+	private double easySimilarity(List<Integer> thisCustomerVector, List<Map<String, Object>> similarCustomerWatched){
+		double incommon = 0;
+		/*
+		 * this is the place where you can create clever
+		 * similarity score.
+		 * 
+		 * This algorithm simple returns how many movies these customers have in common.
+		 * 
+		 * You could use any similarity algorithm you wish
+		 */
+		List<Integer> similarCustomerVector = makeVector(similarCustomerWatched);
 		
-		if (!file.isEmpty() && (what.equalsIgnoreCase("USER") || what.equalsIgnoreCase("PRODUCT"))) {
-			try {
-				WritePolicy wp = new WritePolicy();
-				String line =  "";
-				String setName = what;
-				String binName = (setName.equalsIgnoreCase("USER"))? USER_HISTORY : PRODUCT_HISTORY;
-				BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()));
-				while ((line = br.readLine()) != null) {
-
-
-					// use comma as key and bins separator 
-					String[] values = line.split(",");
-					// use colon for value separator
-					String[] history = values[1].trim().split(":");
-					List<String> historyList = new ArrayList<String>();
-					for (String entry : history){
-						historyList.add(entry);
-					}
-
-					// write the record to Aerospike
-					Key key = new Key(nameSpace, setName, values[0].trim() );
-					Bin bin = new Bin(binName, Value.get(historyList));
-					client.put(wp, key, bin);
-
-					log.info(setName + " [ID=" + values[0].trim() 
-							+ " , history=" + values[1].trim() + "]"); 
-
-				}
-				br.close();
-				log.info("Successfully uploaded " + name);
-				return "You successfully uploaded " + name;
-			} catch (Exception e) {
-				log.error("Failed to upload " + name, e);
-				return "You failed to upload " + name + " => " + e.getMessage();
-			}
-		} else {
-			log.error("Failed to upload " + name + " because the file was empty.");
-			return "You failed to upload " + name + " because the file was empty.";
-		}
-	}
-	/**
-	 * This is a very rudimentary similarity algorithm
-	 * @param thisUserProducts
-	 * @param similarUserProduct
-	 * @return
-	 */
-	private int easySimilarity(List<Map<String, Object>> thisUserProducts, List<Map<String, Object>> similarUserProduct){
-		int incommon = 0;
-
-		for (Map<String, Object> sourceRating : thisUserProducts){
-			if (similarUserProduct.contains(sourceRating.get(MovieRating.MOVIE_ID))){
-				incommon++;
-			}
-		}
-		return incommon;
+		return cosineSimilarity(thisCustomerVector, similarCustomerVector);
 	}
 
-//	private double cosineSimilarity(List<Integer> vec1, List<Integer> vec2) { 
-//		double dp = dotProduct(vec1, vec2); 
-//		double magnitudeA = magnitude(vec1); 
-//		double magnitudeB = magnitude(vec2); 
-//		return dp / magnitudeA * magnitudeB; 
-//	} 
-//
-//	private double magnitude(List<Integer> vec) { 
-//		double sum_mag = 0; 
-//		for(Integer value : vec) { 
-//			sum_mag += value * value; 
-//		} 
-//		return Math.sqrt(sum_mag); 
-//	} 
-//
-//	private double dotProduct(List<Integer> vec1, List<Integer> vec2) { 
-//		double sum = 0; 
-//		for(int i = 0; i<vec1.size(); i++) { 
-//			sum += vec1.get(i) * vec2.get(i); 
-//		} 
-//		return sum; 
-//	} 
+	private double cosineSimilarity(List<Integer> vec1, List<Integer> vec2) { 
+		double dp = dotProduct(vec1, vec2); 
+		double magnitudeA = magnitude(vec1); 
+		double magnitudeB = magnitude(vec2); 
+		return dp / magnitudeA * magnitudeB; 
+	} 
+
+	private double magnitude(List<Integer> vec) { 
+		double sum_mag = 0; 
+		for(Integer value : vec) { 
+			sum_mag += value * value; 
+		} 
+		return Math.sqrt(sum_mag); 
+	} 
+
+	private double dotProduct(List<Integer> vec1, List<Integer> vec2) { 
+		double sum = 0; 
+		if (vec1.size() > vec2.size()) {
+			int diff = vec1.size() - vec2.size();
+			for (int i = 0; i < diff; i++)
+					vec2.add(0);
+			
+		} else if (vec1.size() < vec2.size()) {
+			int diff = vec2.size() - vec1.size();
+			for (int i = 0; i < diff; i++)
+					vec1.add(0);
+		}
+		for(int i = 0; i<vec1.size(); i++) { 
+			sum += vec1.get(i) * vec2.get(i); 
+		} 
+		return sum; 
+	} 
 
 }

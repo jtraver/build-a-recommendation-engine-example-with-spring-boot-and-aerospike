@@ -16,11 +16,11 @@ In each case you will need to go to the database and retrieve your data within 2
 You will build a simple recommendation RESTful web service with Spring Boot and Aerospike. 
 The recommendation service accepts an HTTP GET request:
 
-    http://localhost:8080/recommendation/{user}
+    http://localhost:8080/recommendation/{customer}
 
 It responds with the following JSON array of recomendations:
 
-    ["helicopter","cat","bark buster","arduino"]
+    [{"expiration":130019315,"bins":{"title":"Classic Albums: Meat Loaf: Bat Out of Hell","yearOfRelease":"1999"},"generation":4},{"expiration":130019337,"bins":{"title":"Rudolph the Red-Nosed Reindeer","yearOfRelease":"1964"},"generation":4},{"expiration":130019338,"bins":{"title":"The Bad and the Beautiful","yearOfRelease":"1952"},"generation":4},{"expiration":130019384,"bins":{"title":"Jingle All the Way","yearOfRelease":"1996"},"generation":4},{"expiration":130019386,"bins":{"title":"The Killing","yearOfRelease":"1956"},"generation":4},{"expiration":130019400,"bins":{"title":"Silkwood","yearOfRelease":"1983"},"generation":4},{"expiration":130019404,"bins":{"title":"Chain of Command","yearOfRelease":"2000"},"generation":4}]
     
 There are also many features added to your application out-of-the-box for managing the service in a production (or other) environment. 
 
@@ -34,32 +34,21 @@ A simple recommendation algorithm is to find another user who is similar and rec
 
 How do you do this? You need to maintain a history of a user’s Views and Purchases, e.g:
 
-####User Profile
-|User|Purchases|
+####Movie Customers
+|customerId|watched|
 |----|---------|
-|peter|shoes\:cat\:dog food\:bark buster\:dog collar\:helicopter\:arduino|
-|jane|shoes\:dog food\:dog collar\:sheep\:lipstick:pasta|
+|893988|List(Map("movie-id"->"1", "rating"->3, "customer-id"->"893988", "date"->"2005-11-17"), ...|
+|712664|List(Map("movie-id"->"3", "rating"->5, "customer-id"->"712664", "date"->"2004-02-01"), ...|
 |alex|beer\:wine\:wiskey\:tequila|
 
 You also maintain a list of who purchased a product e.g.
 
-####Product Profile
-|Product|Users who purchased|
-|-------|-------------------|
-|shoes|peter:jane|
-|cat|peter|
-|dog food|peter:jane|
-|bark buster|peter|
-|dog collar|peter:jane|
-|helicopter|peter|
-|arduino|peter|
-|sheep|jane|
-|lipstick|jane|
-|pasta|jane|
-|beer|alex|
-|wine|alex|
-|wiskey|alex|
-|tequilla|alex|
+####Movie Titles
+|movieId|yearOfRelease|title|watchBy|
+|-------|-------------|-----|-------|
+|89|2000|Chain of Command|List(Map("movie-id"->"89", "rating"->2, "customer-id"->"712664", "date"->"2001-08-02"), ...|
+|83|1983|Silkwood|List(Map("movie-id"->"83", "rating"->3, "customer-id"->"716091", "date"->"2000-01-08"), ...|
+|78|1996|Jingle All the Way|List(Map("movie-id"->"78", "rating"->3, "customer-id"->"1943087", "date"->"2001-09-14"), ...|
 
 From this data, you can see that Jane Doe and John Smith have similar purchase histories, but Albert Citizen does not. 
 
@@ -70,9 +59,20 @@ Similarity can be found using several algorithms, e.g. Cosine Similarity. In thi
 
 ###Scenario
 1.	Jane Doe accesses the application
-2.	Retrieve Jane’s User Profile
-3.	Retrieve the Product ‘s Profile for each of Jane’s purchases, this can be a batch operation in Aerospike that retrieves a list of records in one lump
+2.	Retrieve Jane’s cusromer profile
+3.	Retrieve the movie Profile for each of Jane’s views, this can be a batch operation in Aerospike that retrieves a list of records in one lump
 4.	For each product
-	a.	Retrieve the user profile
-	b.	See if this profile is similar to Jane’s by giving it a score
-5.	Using the user profile with the highest similarity score, recommend the products in this user profile to Jane.
+	a.	Retrieve the customer profile
+	b.	See if this profile is similar to Jane’s by giving it a score (using Cosine similarity)
+5.	Using the customers profile with the highest similarity score, recommend the products in this user profile to Jane.
+
+##How to build
+It is easy to build a single runnable Jar with Maven
+
+	mvn package
+	
+##Running the package
+The package is a RESTful service using Spring Boot, packaged in a runnable jar
+
+	java -jar aerospike-recommendation-example-<version>.jar
+	   
