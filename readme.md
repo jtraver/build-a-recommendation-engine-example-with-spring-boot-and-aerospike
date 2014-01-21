@@ -1,5 +1,5 @@
-#Building a simple recommendation engine use RESTful Web Service, Spring Boot and Aerospike
-===========================================================================================
+#Building a simple recommendation engine using RESTful Web Service, Spring Boot and Aerospike
+---------------------------------------------------------------------------------------------
 Recommendation engines are used in applications to personalize the user experience. For example, eCommerce applications recommend products to a customer that other customers, with similar profiles, have viewed or purchased.
 
 Spring Boot is a powerful jump-start into Spring. It allows you to build powerful applications with production grade services with little effort on your part.
@@ -39,7 +39,6 @@ How do you do this? You need to maintain a history of a user’s Views and Purch
 |----|---------|
 |893988|List(Map("movie-id"->"1", "rating"->3, "customer-id"->"893988", "date"->"2005-11-17"), ...|
 |712664|List(Map("movie-id"->"3", "rating"->5, "customer-id"->"712664", "date"->"2004-02-01"), ...|
-|alex|beer\:wine\:wiskey\:tequila|
 
 You also maintain a list of who purchased a product e.g.
 
@@ -70,6 +69,15 @@ Similarity can be found using several algorithms, e.g. Cosine Similarity. In thi
 It is easy to build a single runnable Jar with Maven
 
 	mvn package
+	
+##Loading the test data
+Aerospike has the ability to backup and restore the data in an entire cluster. The test data for this application is stored as am Aerospike backup file. 
+
+Download the file at https://drive.google.com/a/aerospike.com/folderview?id=0B8luCpttpeaAVWZkYl85a2ktaXc&usp=sharing 
+and restore it to your Aerospike cluster using the following command:
+
+	asrestore -h 127.0.0.1 -p 3000 -d <back directory name>
+
 	
 ##Running the package
 The package is a RESTful service using Spring Boot, packaged in a runnable jar
