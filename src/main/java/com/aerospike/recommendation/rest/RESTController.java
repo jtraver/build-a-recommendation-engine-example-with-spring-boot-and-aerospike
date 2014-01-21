@@ -1,11 +1,9 @@
 package com.aerospike.recommendation.rest;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 
 import org.apache.log4j.Logger;
 import org.json.simple.JSONArray;
@@ -20,9 +18,6 @@ import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.policy.Policy;
-import com.aerospike.recommendation.model.Customer;
-import com.aerospike.recommendation.model.Movie;
-import com.aerospike.recommendation.model.WatchedRated;
 
 @Controller
 public class RESTController {
@@ -49,8 +44,8 @@ public class RESTController {
 		nameSpace = (String) as.get("namespace");
 	}
 	/**
-	 * get a recommendation for a specific user
-	 * @param user a unique ID for a user
+	 * get a recommendation for a specific customer
+	 * @param user a unique ID for a customer
 	 * @return
 	 * @throws Exception
 	 */
@@ -140,13 +135,17 @@ public class RESTController {
 			log.debug("Added Movie key: " + recomendedMovieKeys[index]);
 			index++;
 		}
-		Record[] recommendedMovies = client.get(policy, recomendedMovieKeys, "title", "yearOfRelease");
+		Record[] recommendedMovies = client.get(policy, recomendedMovieKeys, TITLE, YEAR_OF_RELEASE);
+		
+		// This is a diagnostic step
 		if (log.isDebugEnabled()){
 			log.debug("Recomended Movies:");
 			for (Record rec : recommendedMovies){
 				log.debug(rec);
 			}
 		}
+		
+		// Turn the Aerospike records into a JSONArray
 		JSONArray recommendations = new JSONArray();
 		for (Record rec: recommendedMovies){
 			if (rec != null)
@@ -188,13 +187,23 @@ public class RESTController {
 		return cosineSimilarity(thisCustomerVector, similarCustomerVector);
 	}
 
+	/**
+	 * Cosing similarity
+	 * @param vec1
+	 * @param vec2
+	 * @return
+	 */
 	private double cosineSimilarity(List<Integer> vec1, List<Integer> vec2) { 
 		double dp = dotProduct(vec1, vec2); 
 		double magnitudeA = magnitude(vec1); 
 		double magnitudeB = magnitude(vec2); 
 		return dp / magnitudeA * magnitudeB; 
 	} 
-
+	/**
+	 * Magnitude
+	 * @param vec
+	 * @return
+	 */
 	private double magnitude(List<Integer> vec) { 
 		double sum_mag = 0; 
 		for(Integer value : vec) { 
@@ -202,7 +211,12 @@ public class RESTController {
 		} 
 		return Math.sqrt(sum_mag); 
 	} 
-
+	/**
+	 * Dot product
+	 * @param vec1
+	 * @param vec2
+	 * @return
+	 */
 	private double dotProduct(List<Integer> vec1, List<Integer> vec2) { 
 		double sum = 0; 
 		if (vec1.size() > vec2.size()) {
