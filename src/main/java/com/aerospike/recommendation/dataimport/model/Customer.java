@@ -1,4 +1,4 @@
-package com.aerospike.recommendation.model;
+package com.aerospike.recommendation.dataimport.model;
 
 import java.util.ArrayList;
 import java.util.List;

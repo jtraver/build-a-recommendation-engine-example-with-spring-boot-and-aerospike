@@ -1,4 +1,4 @@
-package com.aerospike.recommendation.model;
+package com.aerospike.recommendation.dataimport.model;
 
 import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Bin;

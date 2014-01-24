@@ -1,4 +1,4 @@
-package com.aerospike.recommendation.model;
+package com.aerospike.recommendation.dataimport.model;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -26,7 +26,7 @@ public class WatchedRated implements Map, Comparable<WatchedRated>
 		this.properties = map;
 	}
 	@SuppressWarnings("unchecked")
-	public WatchedRated(String movie, String customerID, int rating, String date) {
+	public WatchedRated(String movie, String customerID, long rating, String date) {
 		this();
 		this.properties.put(MOVIE_ID, movie);
 		this.properties.put(CUSTOMER_ID, customerID);
@@ -49,8 +49,8 @@ public class WatchedRated implements Map, Comparable<WatchedRated>
 		this.properties.put(CUSTOMER_ID, movie);
 	}
 
-	public int getRating() {
-		return (Integer) this.properties.get(RATING);
+	public long getRating() {
+		return (Long) this.properties.get(RATING);
 	}
 	
 	/**

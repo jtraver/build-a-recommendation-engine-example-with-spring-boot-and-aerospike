@@ -76,7 +76,7 @@ public class RESTController {
 		/*
 		 * build a vector list of movies watched
 		 */
-		List<Integer> thisCustomerMovieVector = makeVector(customerWatched);
+		List<Long> thisCustomerMovieVector = makeVector(customerWatched);
 
 
 		Record bestMatchedCustomer = null;
@@ -159,10 +159,14 @@ public class RESTController {
 	 * @param ratingList
 	 * @return
 	 */
-	private List<Integer> makeVector(List<Map<String, Object>> ratingList){
-		List<Integer> movieVector = new ArrayList<Integer>();
+	private List<Long> makeVector(List<Map<String, Object>> ratingList){
+		List<Long> movieVector = new ArrayList<Long>();
 		for (Map<String, Object> one : ratingList){
-			movieVector.add(Integer.parseInt((String)one.get(MOVIE_ID)));
+			String movieString = (String)one.get(MOVIE_ID);
+			if (movieString == null)
+				movieVector.add(0L);
+			else
+				movieVector.add(Long.parseLong(movieString));
 		}
 		return movieVector;
 	}
@@ -172,7 +176,7 @@ public class RESTController {
 	 * @param similarCustomerWatched
 	 * @return
 	 */
-	private double easySimilarity(List<Integer> thisCustomerVector, List<Map<String, Object>> similarCustomerWatched){
+	private double easySimilarity(List<Long> thisCustomerVector, List<Map<String, Object>> similarCustomerWatched){
 		double incommon = 0;
 		/*
 		 * this is the place where you can create clever
@@ -182,7 +186,7 @@ public class RESTController {
 		 * 
 		 * You could use any similarity algorithm you wish
 		 */
-		List<Integer> similarCustomerVector = makeVector(similarCustomerWatched);
+		List<Long> similarCustomerVector = makeVector(similarCustomerWatched);
 		
 		return cosineSimilarity(thisCustomerVector, similarCustomerVector);
 	}
@@ -193,7 +197,7 @@ public class RESTController {
 	 * @param vec2
 	 * @return
 	 */
-	private double cosineSimilarity(List<Integer> vec1, List<Integer> vec2) { 
+	private double cosineSimilarity(List<Long> vec1, List<Long> vec2) { 
 		double dp = dotProduct(vec1, vec2); 
 		double magnitudeA = magnitude(vec1); 
 		double magnitudeB = magnitude(vec2); 
@@ -204,9 +208,9 @@ public class RESTController {
 	 * @param vec
 	 * @return
 	 */
-	private double magnitude(List<Integer> vec) { 
+	private double magnitude(List<Long> vec) { 
 		double sum_mag = 0; 
-		for(Integer value : vec) { 
+		for(Long value : vec) { 
 			sum_mag += value * value; 
 		} 
 		return Math.sqrt(sum_mag); 
@@ -217,17 +221,17 @@ public class RESTController {
 	 * @param vec2
 	 * @return
 	 */
-	private double dotProduct(List<Integer> vec1, List<Integer> vec2) { 
+	private double dotProduct(List<Long> vec1, List<Long> vec2) { 
 		double sum = 0; 
 		if (vec1.size() > vec2.size()) {
 			int diff = vec1.size() - vec2.size();
 			for (int i = 0; i < diff; i++)
-					vec2.add(0);
+					vec2.add(0L);
 			
 		} else if (vec1.size() < vec2.size()) {
 			int diff = vec2.size() - vec1.size();
 			for (int i = 0; i < diff; i++)
-					vec1.add(0);
+					vec1.add(0L);
 		}
 		for(int i = 0; i<vec1.size(); i++) { 
 			sum += vec1.get(i) * vec2.get(i); 

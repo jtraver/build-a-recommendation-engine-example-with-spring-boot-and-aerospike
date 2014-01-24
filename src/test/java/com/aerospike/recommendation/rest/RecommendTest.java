@@ -32,7 +32,7 @@ public class RecommendTest {
 		appCon.getBean(AerospikeRecommendationService.class);
 		RESTController controller = appCon.getBean(RESTController.class);
 		
-		controller.getRecommendationFor("893988");
+		controller.getRecommendationFor("15836679");
 	}
 
 }
