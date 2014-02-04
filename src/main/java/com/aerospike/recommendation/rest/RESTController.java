@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.aerospike.client.AerospikeClient;
+import com.aerospike.client.AerospikeException;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.aerospike.client.policy.Policy;
@@ -58,8 +59,14 @@ public class RESTController {
 		/* 
 		 * Get the customer's purchase history as a list of ratings
 		 */
-		Record thisUser = client.get(policy, new Key(NAME_SPACE, USERS_SET, customerID));
-		if (thisUser == null){
+		Record thisUser = null;
+		try{
+			thisUser = client.get(policy, new Key(NAME_SPACE, USERS_SET, customerID));
+			if (thisUser == null){
+				log.debug("Could not find user: " + customerID );
+				throw new CustomerNotFound(customerID);
+			}
+		} catch (AerospikeException e){
 			log.debug("Could not find user: " + customerID );
 			throw new CustomerNotFound(customerID);
 		}
